@@ -1,0 +1,109 @@
+import subprocess
+import os
+import sys
+
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+DATA_BASE_DIR = os.path.join(PROJECT_ROOT, "data")
+MODELS_DIR = os.path.join(PROJECT_ROOT, "models")
+MAF_DIR = os.path.join(PROJECT_ROOT, "maf")
+
+venv_python = os.path.join(PROJECT_ROOT, ".venv", "bin", "python")
+PYTHON_CMD = venv_python if os.path.exists(venv_python) else sys.executable
+
+def _run_command(cmd, cwd=None):
+    print(f"\n>> Running: {cmd}")
+    process = subprocess.Popen(cmd, shell=True, cwd=cwd)
+    process.wait()
+        
+    if process.returncode != 0:
+        print(f"\nERROR: Command failed with return code {process.returncode}")
+        return False
+    return True
+
+def _get_exp_paths(lookahead, beam, data_suffix=""):
+    exp_name = f"lattice_l{lookahead}_b{beam}"
+    data_path = os.path.join(DATA_BASE_DIR, f"{exp_name}{data_suffix}")
+    model_name = f"xgboost_{exp_name}_rank.json"
+    model_path = os.path.join(MODELS_DIR, model_name)
+    return exp_name, data_path, model_name, model_path
+
+def generate_data(lookahead: int, beam: int, train_dir: str, num_cores: int, data_suffix: str = "", k_cfa: int = 0) -> bool:
+    """Runs Phase 1: Scala Lattice Data Generation."""
+    exp_name, data_path, _, _ = _get_exp_paths(lookahead, beam, data_suffix)
+    print(f"\n{'='*60}\n [PHASE 1] Data Generation: {exp_name}{data_suffix}\n{'='*60}")
+    
+    if not os.path.exists(data_path):
+        os.makedirs(data_path)
+        
+    cmd = f'sbt --warn "maf/runMain maf.cli.runnables.OracleLatticeGenerator {lookahead} {beam} {data_path} {num_cores} {train_dir} {k_cfa}"'
+    return _run_command(cmd, cwd=MAF_DIR)
+
+def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "") -> bool:
+    """Runs Phase 2: Python XGBoost Rank Model Training."""
+    exp_name, data_path, model_name, default_model_path = _get_exp_paths(lookahead, beam, data_suffix)
+    
+    actual_model_dir = model_dir if model_dir else MODELS_DIR
+    print(f"\n{'='*60}\n [PHASE 2] Model Training (Rank): {exp_name}{data_suffix} -> {actual_model_dir}\n{'='*60}")
+    
+    # Build command
+    cmd = f'{PYTHON_CMD} scripts/train_lattice_rank_model.py --data_root {data_path} --models_dir {actual_model_dir}'
+    if features:
+        features_str = ",".join(features)
+        cmd += f' --features "{features_str}"'
+        
+    if not _run_command(cmd, cwd=PROJECT_ROOT):
+        return False
+        
+    # Phase 2b: Transpile the model to Scala
+    json_model_path = os.path.join(actual_model_dir, "xgboost_lattice_oracle_rank.json")
+    scala_output_path = os.path.join(MAF_DIR, "code", "jvm", "src", "main", "scala", "maf", "cli", "runnables", "TranspiledOracle.scala")
+    
+    transpile_cmd = f'{PYTHON_CMD} scripts/transpile_xgboost.py --json_model {json_model_path} --output {scala_output_path}'
+    return _run_command(transpile_cmd, cwd=PROJECT_ROOT)
+
+def evaluate_model(lookahead: int, beam: int, test_dir: str, num_cores: int, model_dir: str = None, num_runs: int = 1, data_suffix: str = "", k_cfa: int = 0) -> bool:
+    """Runs Phase 3: Scala ML Oracle Evaluation."""
+    exp_name, data_path, _, default_model_path = _get_exp_paths(lookahead, beam, data_suffix)
+    
+    actual_model_dir = model_dir if model_dir else MODELS_DIR
+    print(f"\n{'='*60}\n [PHASE 3] Evaluation: {exp_name}{data_suffix} -> {actual_model_dir}\n{'='*60}")
+    
+    # Store results right next to the model
+    results_csv = os.path.join(actual_model_dir, "evaluation_results.csv")
+    
+    # sbt runMain args: modelDir testDir resultFile lookahead beam numRuns k_cfa
+    cmd = f'sbt --warn "maf/runMain maf.cli.runnables.MLOracleFinder {actual_model_dir} {test_dir} {results_csv} {lookahead} {beam} {num_runs} {k_cfa}"'
+    return _run_command(cmd, cwd=MAF_DIR)
+
+def run_all(lookahead: int, beam: int, train_dir: str, test_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "", k_cfa: int = 0) -> bool:
+    """Runs the full pipeline sequentially."""
+    if generate_data(lookahead, beam, train_dir, num_cores, data_suffix, k_cfa):
+        if train_model(lookahead, beam, train_dir, num_cores, features, model_dir, data_suffix):
+            return evaluate_model(lookahead, beam, test_dir, num_cores, model_dir, num_runs=1, data_suffix=data_suffix, k_cfa=k_cfa)
+    return False
+
+if __name__ == "__main__":
+    import argparse
+    parser = argparse.ArgumentParser(description="Lattice ML Pipeline")
+    parser.add_argument("--action", choices=["all", "generate", "train", "evaluate"], default="all", help="Which phase to run")
+    parser.add_argument("--lookahead", type=int, default=10)
+    parser.add_argument("--beam", type=int, default=3)
+    parser.add_argument("--train-dir", type=str, default="test/R5RS/various")
+    parser.add_argument("--test-dir", type=str, default="../val")
+    parser.add_argument("--cores", type=int, default=10)
+    parser.add_argument("--model-dir", type=str, default=None)
+    parser.add_argument("--data-suffix", type=str, default="")
+    parser.add_argument("--features", type=str, help="Comma separated features list")
+    parser.add_argument("--k", type=int, default=0, help="k-CFA value (default: 0)")
+    
+    args = parser.parse_args()
+    features = args.features.split(",") if args.features else None
+    
+    if args.action == "all":
+        run_all(args.lookahead, args.beam, args.train_dir, args.test_dir, args.cores, features, args.model_dir, args.data_suffix, args.k)
+    elif args.action == "generate":
+        generate_data(args.lookahead, args.beam, args.train_dir, args.cores, args.data_suffix, args.k)
+    elif args.action == "train":
+        train_model(args.lookahead, args.beam, args.train_dir, args.cores, features, args.model_dir, args.data_suffix)
+    elif args.action == "evaluate":
+        evaluate_model(args.lookahead, args.beam, args.test_dir, args.cores, args.model_dir, num_runs=3, data_suffix=args.data_suffix, k_cfa=args.k)

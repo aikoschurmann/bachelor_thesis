@@ -1,0 +1,8 @@
+maf/code/jvm/src/main/scala/maf/cli/runnables/TranspiledOracle.scala
+data/
+backups/
+.venv/
+.DS_Store
+*.jfr
+target/
+maf/target/
