@@ -21,8 +21,8 @@ def _run_command(cmd, cwd=None):
         return False
     return True
 
-def _get_exp_paths(lookahead, beam, data_suffix=""):
-    exp_name = f"lattice_l{lookahead}_b{beam}"
+def _get_exp_paths(lookahead, beam, k = 0, data_suffix=""):
+    exp_name = f"lattice_l{lookahead}_b{beam}_k{k}"
     data_path = os.path.join(DATA_BASE_DIR, f"{exp_name}{data_suffix}")
     model_name = f"xgboost_{exp_name}_rank.json"
     model_path = os.path.join(MODELS_DIR, model_name)
@@ -30,7 +30,7 @@ def _get_exp_paths(lookahead, beam, data_suffix=""):
 
 def generate_data(lookahead: int, beam: int, train_dir: str, num_cores: int, data_suffix: str = "", k_cfa: int = 0) -> bool:
     """Runs Phase 1: Scala Lattice Data Generation."""
-    exp_name, data_path, _, _ = _get_exp_paths(lookahead, beam, data_suffix)
+    exp_name, data_path, _, _ = _get_exp_paths(lookahead, beam, k_cfa, data_suffix)
     print(f"\n{'='*60}\n [PHASE 1] Data Generation: {exp_name}{data_suffix}\n{'='*60}")
     
     if not os.path.exists(data_path):
@@ -40,9 +40,9 @@ def generate_data(lookahead: int, beam: int, train_dir: str, num_cores: int, dat
     cmd = f'java -jar {jar} {lookahead} {beam} {data_path} {num_cores} {train_dir} {k_cfa}'
     return _run_command(cmd, cwd=MAF_DIR)
 
-def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "") -> bool:
+def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "", k_cfa = 0) -> bool:
     """Runs Phase 2: Python XGBoost Rank Model Training."""
-    exp_name, data_path, model_name, default_model_path = _get_exp_paths(lookahead, beam, data_suffix)
+    exp_name, data_path, model_name, default_model_path = _get_exp_paths(lookahead, beam, k_cfa, data_suffix)
     
     actual_model_dir = model_dir if model_dir else MODELS_DIR
     print(f"\n{'='*60}\n [PHASE 2] Model Training (Rank): {exp_name}{data_suffix} -> {actual_model_dir}\n{'='*60}")
@@ -70,7 +70,7 @@ def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, featu
 
 def evaluate_model(lookahead: int, beam: int, test_dir: str, num_cores: int, model_dir: str = None, num_runs: int = 1, data_suffix: str = "", k_cfa: int = 0) -> bool:
     """Runs Phase 3: Scala ML Oracle Evaluation."""
-    exp_name, data_path, _, default_model_path = _get_exp_paths(lookahead, beam, data_suffix)
+    exp_name, data_path, _, default_model_path = _get_exp_paths(lookahead, beam, k_cfa, data_suffix)
     
     actual_model_dir = model_dir if model_dir else MODELS_DIR
     print(f"\n{'='*60}\n [PHASE 3] Evaluation: {exp_name}{data_suffix} -> {actual_model_dir}\n{'='*60}")
