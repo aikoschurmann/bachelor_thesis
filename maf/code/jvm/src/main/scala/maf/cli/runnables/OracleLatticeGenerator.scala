@@ -83,7 +83,7 @@ object OracleLatticeGenerator:
             if fifoSteps < 50 then
                 println(s">>> SKIPPING $progName (Too small: $fifoSteps steps) <<<")
             else
-                println(s"\n>>> EXPLORING $progName with Lattice-Beam (Lookahead: $lookahead | Beam: $beamWidth | Cores: $numCores) <<<")
+                println(s"\n>>> EXPLORING $progName with Lattice-Beam (Lookahead: $lookahead | Beam: $beamWidth | Cores: $numCores | k: $k_cfa) <<<")
                 
                 val extractor = new LatticeFeatureBuilder()
                 val progDir = new File(outBaseDir, progName)
