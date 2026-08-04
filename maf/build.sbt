@@ -105,3 +105,65 @@ lazy val maf = crossProject(JVMPlatform, JSPlatform)
 
 lazy val mafJVM = maf.jvm
 lazy val mafJS = maf.js
+
+/** Shared assembly settings: how to resolve duplicate files coming from the fat jar's dependencies. */
+lazy val assemblySettings = Seq(
+  assembly / assemblyMergeStrategy := {
+    case PathList("META-INF", "services", _*)              => MergeStrategy.filterDistinctLines
+    case PathList("META-INF", "MANIFEST.MF")               => MergeStrategy.discard
+    case PathList("META-INF", xs @ _*) if xs.lastOption.exists(n =>
+          n.endsWith(".SF") || n.endsWith(".DSA") || n.endsWith(".RSA")) =>
+      MergeStrategy.discard
+    case PathList("reference.conf")                        => MergeStrategy.concat
+    case PathList("application.conf")                      => MergeStrategy.concat
+    case PathList("module-info.class")                     => MergeStrategy.discard
+    case x if x.endsWith("/module-info.class")             => MergeStrategy.discard
+    case x                                                 => MergeStrategy.first
+  },
+  // Native libraries (e.g. those shipped by xgboost4j) must stay in the jar.
+  assembly / assemblyOption ~= { _.withIncludeScala(true).withIncludeDependency(true) },
+  assembly / test := {}
+)
+
+/** Copies the assembled fat jar into maf/build/<jarName>. */
+lazy val buildJar = taskKey[File]("Assemble the fat jar and copy it into the build/ directory")
+
+/** Creates a project that only exists to produce a fat jar for `main`, named `jar`. */
+def fatJar(id: String, main: String, jar: String): Project =
+  Project(id, file("target/assembly") / id)
+    .dependsOn(mafJVM)
+    .settings(assemblySettings)
+    .settings(
+      scalaVersion := "3.3.7",
+      publish / skip := true,
+      Compile / mainClass := Some(main),
+      assembly / mainClass := Some(main),
+      assembly / assemblyJarName := jar,
+      buildJar := {
+        val source = assembly.value
+        val target = (ThisBuild / baseDirectory).value / "build" / jar
+        IO.copyFile(source, target)
+        streams.value.log.info(s"Copied $source to $target")
+        target
+      }
+    )
+
+/** Used by scripts/lattice_pipeline.py */
+lazy val oracleLatticeGenerator =
+  fatJar("oracleLatticeGenerator", "maf.cli.runnables.OracleLatticeGenerator", "oracle-lattice-generator.jar")
+
+/** Used by scripts/lattice_pipeline.py */
+lazy val mlOracleFinder =
+  fatJar("mlOracleFinder", "maf.cli.runnables.MLOracleFinder", "ml-oracle-finder.jar")
+
+/** Used by scripts/replay_all.py */
+lazy val replayLatticeGenerator =
+  fatJar("replayLatticeGenerator", "maf.cli.runnables.ReplayLatticeGenerator", "replay-lattice-generator.jar")
+
+/** Builds all three fat jars at once and places them in maf/build/. */
+lazy val assembleAll = taskKey[Seq[File]]("Assemble all runnable fat jars into build/")
+assembleAll := Seq(
+  (oracleLatticeGenerator / buildJar).value,
+  (mlOracleFinder / buildJar).value,
+  (replayLatticeGenerator / buildJar).value
+)

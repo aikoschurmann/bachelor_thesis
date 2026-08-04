@@ -1,6 +1,7 @@
 import subprocess
 import os
 import sys
+import utils
 
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 DATA_BASE_DIR = os.path.join(PROJECT_ROOT, "data")
@@ -35,7 +36,8 @@ def generate_data(lookahead: int, beam: int, train_dir: str, num_cores: int, dat
     if not os.path.exists(data_path):
         os.makedirs(data_path)
         
-    cmd = f'sbt --warn "maf/runMain maf.cli.runnables.OracleLatticeGenerator {lookahead} {beam} {data_path} {num_cores} {train_dir} {k_cfa}"'
+    jar = utils.path_to_jar("oracle-lattice-generator.jar")
+    cmd = f'java -jar {jar} {lookahead} {beam} {data_path} {num_cores} {train_dir} {k_cfa}'
     return _run_command(cmd, cwd=MAF_DIR)
 
 def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "") -> bool:
@@ -59,7 +61,12 @@ def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, featu
     scala_output_path = os.path.join(MAF_DIR, "code", "jvm", "src", "main", "scala", "maf", "cli", "runnables", "TranspiledOracle.scala")
     
     transpile_cmd = f'{PYTHON_CMD} scripts/transpile_xgboost.py --json_model {json_model_path} --output {scala_output_path}'
-    return _run_command(transpile_cmd, cwd=PROJECT_ROOT)
+    if not _run_command(transpile_cmd, cwd=PROJECT_ROOT):
+        return False
+
+    # Phase 2c: the transpiled oracle is compiled into the evaluation jar, so it has to
+    # be reassembled before it can be used by evaluate_model.
+    return _run_command('sbt --warn mlOracleFinder/buildJar', cwd=MAF_DIR)
 
 def evaluate_model(lookahead: int, beam: int, test_dir: str, num_cores: int, model_dir: str = None, num_runs: int = 1, data_suffix: str = "", k_cfa: int = 0) -> bool:
     """Runs Phase 3: Scala ML Oracle Evaluation."""
@@ -71,8 +78,9 @@ def evaluate_model(lookahead: int, beam: int, test_dir: str, num_cores: int, mod
     # Store results right next to the model
     results_csv = os.path.join(actual_model_dir, "evaluation_results.csv")
     
-    # sbt runMain args: modelDir testDir resultFile lookahead beam numRuns k_cfa
-    cmd = f'sbt --warn "maf/runMain maf.cli.runnables.MLOracleFinder {actual_model_dir} {test_dir} {results_csv} {lookahead} {beam} {num_runs} {k_cfa}"'
+    # jar args: modelDir testDir resultFile lookahead beam numRuns k_cfa
+    jar = utils.path_to_jar("ml-oracle-finder.jar")
+    cmd = f'java -jar {jar} {actual_model_dir} {test_dir} {results_csv} {lookahead} {beam} {num_runs} {k_cfa}'
     return _run_command(cmd, cwd=MAF_DIR)
 
 def run_all(lookahead: int, beam: int, train_dir: str, test_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "", k_cfa: int = 0) -> bool:
@@ -98,6 +106,8 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     features = args.features.split(",") if args.features else None
+
+    utils.assert_all_jars_exist()
     
     if args.action == "all":
         run_all(args.lookahead, args.beam, args.train_dir, args.test_dir, args.cores, features, args.model_dir, args.data_suffix, args.k)
