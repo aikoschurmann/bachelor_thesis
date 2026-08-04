@@ -205,3 +205,5 @@ object OracleLatticeGenerator:
                 writer.close()
                 println(s"\n  Finished $progName in $stepCount steps.")
         }
+        
+        sys.exit(0)
