@@ -18,7 +18,7 @@ def analyze_all_configs():
         df = pd.read_csv(f)
         # Infer config from path
         parts = f.split(os.sep)
-        exp_name = parts[-3]
+        exp_name = parts[-4]
         model_name = parts[-2]
         df['config'] = f"{exp_name}/{model_name}"
         dfs.append(df)
