@@ -67,6 +67,7 @@ class XGBoostScorer(modelDir: String, extractor: FeatureBuilder):
 
 class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoostScorer, val config: MLConfig) extends WorkList[SchemeModFComponent]:
     protected val pool = mutable.ArrayBuffer[SchemeModFComponent]()
+    protected val poolElements = mutable.Set[SchemeModFComponent]()
     var currentStep: Int = 0
     private var cachedHead: Option[SchemeModFComponent] = None
     private var lastHeadStep: Int = -1
@@ -78,11 +79,19 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
     private val BATCH_SIZE = 20
     private val STALE_THRESHOLD = 20
 
-    def add(x: SchemeModFComponent) = { if !pool.contains(x) then pool += x; this }
+    def add(x: SchemeModFComponent) = {
+      if !poolElements.contains(x)
+      then 
+        pool += x
+        poolElements += x
+
+      this 
+    }
+
     def addAll(xs: Iterable[SchemeModFComponent]) = { xs.foreach(add); this }
     def isEmpty = pool.isEmpty
     def nonEmpty = pool.nonEmpty
-    def contains(x: SchemeModFComponent) = pool.contains(x)
+    def contains(x: SchemeModFComponent) = poolElements.contains(x)
     
     def head = 
         if cachedHead.isDefined && lastHeadStep == currentStep then cachedHead.get
@@ -95,6 +104,7 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
     def tail = 
         val h = head
         pool -= h
+        poolElements -= h
         scoreCache -= h
         lastScoredStep -= h
         lastScoredDelta -= h
@@ -182,10 +192,14 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
 
     override def toList = pool.toList
     override def toSet = pool.toSet
-    override def filter(f: SchemeModFComponent => Boolean) = { val toRem = pool.filterNot(f); toRem.foreach(x => { pool -= x; scoreCache -= x }); this }
+    override def filter(f: SchemeModFComponent => Boolean) = { 
+      val toRem = pool.filterNot(f); 
+      toRem.foreach(x => { pool -= x; scoreCache -= x; poolElements -= x }); 
+      this 
+    }
     override def filterNot(f: SchemeModFComponent => Boolean) = filter(x => !f(x))
     override def map[Y](f: SchemeModFComponent => Y) = throw new UnsupportedOperationException()
-    override def -(x: SchemeModFComponent) = { pool -= x; scoreCache -= x; this }
+    override def -(x: SchemeModFComponent) = { pool -= x; scoreCache -= x; poolElements -= x; this }
 
 object MLOracleFinder:
     def main(args: Array[String]): Unit =
