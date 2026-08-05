@@ -86,7 +86,7 @@ def evaluate_model(lookahead: int, beam: int, test_dir: str, num_cores: int, mod
 def run_all(lookahead: int, beam: int, train_dir: str, test_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "", k_cfa: int = 0) -> bool:
     """Runs the full pipeline sequentially."""
     if generate_data(lookahead, beam, train_dir, num_cores, data_suffix, k_cfa):
-        if train_model(lookahead, beam, train_dir, num_cores, features, model_dir, data_suffix):
+        if train_model(lookahead, beam, train_dir, num_cores, features, model_dir, data_suffix, k_cfa = k_cfa):
             return evaluate_model(lookahead, beam, test_dir, num_cores, model_dir, num_runs=1, data_suffix=data_suffix, k_cfa=k_cfa)
     return False
 
@@ -114,6 +114,6 @@ if __name__ == "__main__":
     elif args.action == "generate":
         generate_data(args.lookahead, args.beam, args.train_dir, args.cores, args.data_suffix, args.k)
     elif args.action == "train":
-        train_model(args.lookahead, args.beam, args.train_dir, args.cores, features, args.model_dir, args.data_suffix)
+        train_model(args.lookahead, args.beam, args.train_dir, args.cores, features, args.model_dir, args.data_suffix, k_cfa=args.k)
     elif args.action == "evaluate":
         evaluate_model(args.lookahead, args.beam, args.test_dir, args.cores, args.model_dir, num_runs=3, data_suffix=args.data_suffix, k_cfa=args.k)
