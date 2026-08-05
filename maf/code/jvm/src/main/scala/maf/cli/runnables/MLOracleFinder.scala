@@ -15,8 +15,36 @@ import scala.collection.mutable
 import scala.util.Random
 import scala.math.*
 import scala.language.unsafeNulls
+import scala.collection.mutable.ArrayBuffer
 
 case class MLConfig(modelDir: String, epsilon: Double = 0.0, starvationThreshold: Int = 50)
+
+class Pool[T]: 
+  protected val contents: mutable.ArrayBuffer[T] = mutable.ArrayBuffer()
+  protected val elements: mutable.Set[T] = mutable.Set()
+
+  def contains(x: T): Boolean = elements.contains(x)
+  def add(x: T): Unit =
+    contents += x 
+    elements += x
+  def remove(x: T): Unit =
+    contents -= x
+    elements -= x
+  def -=(x: T): Unit = remove(x)
+  def +=(x: T): Unit = add(x)
+  def isEmpty: Boolean = contents.isEmpty
+  def nonEmpty: Boolean = contents.nonEmpty
+  def apply(i: Int): T = contents(i)
+  def length: Int = contents.length
+  def size: Int = contents.size
+  def toList: List[T] = contents.toList
+  def toSet: Set[T] = contents.toSet
+  def foreach(f: T => Unit): Unit = contents.foreach(f)
+  def filterNot(f: T => Boolean): Pool[T] =
+    val newPool = new Pool[T]()
+    for (x <- contents) do
+      if !f(x) then newPool.add(x)
+    newPool
 
 class XGBoostScorer(modelDir: String, extractor: FeatureBuilder):
     private val jsonStr = scala.io.Source.fromFile(s"$modelDir/feature_names_lattice_rank.json").mkString
@@ -66,7 +94,7 @@ class XGBoostScorer(modelDir: String, extractor: FeatureBuilder):
             scores
 
 class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoostScorer, val config: MLConfig) extends WorkList[SchemeModFComponent]:
-    protected val pool = mutable.ArrayBuffer[SchemeModFComponent]()
+    protected val pool = Pool[SchemeModFComponent]()
     var currentStep: Int = 0
     private var cachedHead: Option[SchemeModFComponent] = None
     private var lastHeadStep: Int = -1
@@ -78,7 +106,14 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
     private val BATCH_SIZE = 20
     private val STALE_THRESHOLD = 20
 
-    def add(x: SchemeModFComponent) = { if !pool.contains(x) then pool += x; this }
+    def add(x: SchemeModFComponent) = {
+      if !pool.contains(x)
+      then 
+        pool += x
+
+      this 
+    }
+
     def addAll(xs: Iterable[SchemeModFComponent]) = { xs.foreach(add); this }
     def isEmpty = pool.isEmpty
     def nonEmpty = pool.nonEmpty
@@ -182,10 +217,14 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
 
     override def toList = pool.toList
     override def toSet = pool.toSet
-    override def filter(f: SchemeModFComponent => Boolean) = { val toRem = pool.filterNot(f); toRem.foreach(x => { pool -= x; scoreCache -= x }); this }
+    override def filter(f: SchemeModFComponent => Boolean) = { 
+      val toRem = pool.filterNot(f); 
+      toRem.foreach(x => { pool -= x; scoreCache -= x }); 
+      this 
+    }
     override def filterNot(f: SchemeModFComponent => Boolean) = filter(x => !f(x))
     override def map[Y](f: SchemeModFComponent => Y) = throw new UnsupportedOperationException()
-    override def -(x: SchemeModFComponent) = { pool -= x; scoreCache -= x; this }
+    override def -(x: SchemeModFComponent) = { pool -= x; scoreCache -= x;this }
 
 object MLOracleFinder:
     def main(args: Array[String]): Unit =

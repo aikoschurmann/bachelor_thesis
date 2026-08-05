@@ -36,7 +36,15 @@ def main():
     with open(args.json_model, 'r') as f:
         model = json.load(f)
         
-    base_score = float(model['learner']['learner_model_param']['base_score'])
+    try:
+        base_score = float(model['learner']['learner_model_param']['base_score'])
+    except ValueError:
+        # Newer versions of xgboost use a vector of scores rather than a single float
+        # but we do get a single float here, except that is serialized into a string
+        # representing a JSON array, so we parse it again to obtain the actual value.
+        vector_value = model['learner']['learner_model_param']['base_score']
+        base_score = float(json.loads(vector_value)[0])
+
     trees = model['learner']['gradient_booster']['model']['trees']
     
     out_lines = [
