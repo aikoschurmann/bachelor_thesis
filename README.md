@@ -17,6 +17,8 @@ python scripts/lattice_pipeline.py --action [all|generate|train|evaluate] [OPTIO
 
 ---
 
+Note that when deviating from the default argument values, the argument non-default arguments have to be repeated for each phase.
+
 ## Phase 1: Data Generation
 
 **Trigger:** `python scripts/lattice_pipeline.py --action generate`
@@ -46,6 +48,7 @@ python scripts/lattice_pipeline.py --action [all|generate|train|evaluate] [OPTIO
 **Trigger:** `python scripts/lattice_pipeline.py --action evaluate`
 **Core File:** `maf/code/jvm/src/main/scala/maf/cli/runnables/MLOracleFinder.scala`
 
+*   **Prerequisites**: Recompile the Scala source to use the generated `TranspiledOracle.scala` by navigating to the `maf` directory and running `sbt assembleAll`.
 *   **Process:** For every benchmark in `--test-dir`, the framework performs the static analysis twice:
     1.  Using a standard `FIFOWorkList`.
     2.  Using the `MLGuidedWorkList`, which uses the `TranspiledOracle.scala` to score and sort the worklist components in O(N) time.
