@@ -14,6 +14,7 @@ python scripts/lattice_pipeline.py --action [all|generate|train|evaluate|generat
 *   `--k`: The k-CFA context-sensitivity level (default: 0).
 *   `--train-dir` / `--test-dir`: Directories containing `.scm` benchmark programs.
 *   `--cores`: Number of threads for parallel Scala execution.
+*   `--features`: A comma-separated list of raw feature names to use for training (e.g., `"feature_a,feature_b"`). If omitted, all available features are used.
 
 ---
 
