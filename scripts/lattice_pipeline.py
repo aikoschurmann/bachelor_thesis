@@ -83,6 +83,17 @@ def evaluate_model(lookahead: int, beam: int, test_dir: str, num_cores: int, mod
     cmd = f'java -jar {jar} {actual_model_dir} {test_dir} {results_csv} {lookahead} {beam} {num_runs} {k_cfa}'
     return _run_command(cmd, cwd=MAF_DIR)
 
+def generate_random(test_dir: str, num_runs: int = 100, k_cfa: int = 0) -> bool:
+    """Runs Random Trajectory Generation."""
+    print(f"\n{'='*60}\n Generating Random Trajectories \n{'='*60}")
+    
+    jar = utils.path_to_jar("random-trajectory-generator.jar")
+    result_file = os.path.join(DATA_BASE_DIR, "raw", "random_trajectories.csv")
+    
+    # jar args: testDir resultFile numRuns k_cfa
+    cmd = f'java -jar {jar} {test_dir} {result_file} {num_runs} {k_cfa}'
+    return _run_command(cmd, cwd=MAF_DIR)
+
 def run_all(lookahead: int, beam: int, train_dir: str, test_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "", k_cfa: int = 0) -> bool:
     """Runs the full pipeline sequentially."""
     if generate_data(lookahead, beam, train_dir, num_cores, data_suffix, k_cfa):
@@ -93,12 +104,13 @@ def run_all(lookahead: int, beam: int, train_dir: str, test_dir: str, num_cores:
 if __name__ == "__main__":
     import argparse
     parser = argparse.ArgumentParser(description="Lattice ML Pipeline")
-    parser.add_argument("--action", choices=["all", "generate", "train", "evaluate"], default="all", help="Which phase to run")
+    parser.add_argument("--action", choices=["all", "generate", "train", "evaluate", "generate-random"], default="all", help="Which phase to run")
     parser.add_argument("--lookahead", type=int, default=10)
     parser.add_argument("--beam", type=int, default=3)
     parser.add_argument("--train-dir", type=str, default="test/R5RS/various")
     parser.add_argument("--test-dir", type=str, default="../val")
     parser.add_argument("--cores", type=int, default=10)
+    parser.add_argument("--num-runs", type=int, default=100, help="Number of random runs for generate-random")
     parser.add_argument("--model-dir", type=str, default=None)
     parser.add_argument("--data-suffix", type=str, default="")
     parser.add_argument("--features", type=str, help="Comma separated features list")
@@ -117,3 +129,5 @@ if __name__ == "__main__":
         train_model(args.lookahead, args.beam, args.train_dir, args.cores, features, args.model_dir, args.data_suffix, k_cfa=args.k)
     elif args.action == "evaluate":
         evaluate_model(args.lookahead, args.beam, args.test_dir, args.cores, args.model_dir, num_runs=3, data_suffix=args.data_suffix, k_cfa=args.k)
+    elif args.action == "generate-random":
+        generate_random(args.test_dir, args.num_runs, args.k)

@@ -156,14 +156,18 @@ lazy val oracleLatticeGenerator =
 lazy val mlOracleFinder =
   fatJar("mlOracleFinder", "maf.cli.runnables.MLOracleFinder", "ml-oracle-finder.jar")
 
-/** Used by scripts/replay_all.py */
+/** Used by scripts/lattice_pipeline.py */
 lazy val replayLatticeGenerator =
   fatJar("replayLatticeGenerator", "maf.cli.runnables.ReplayLatticeGenerator", "replay-lattice-generator.jar")
+
+lazy val randomTrajectoryGenerator =
+  fatJar("randomTrajectoryGenerator", "maf.cli.runnables.RandomTrajectoryGenerator", "random-trajectory-generator.jar")
 
 /** Builds all three fat jars at once and places them in maf/build/. */
 lazy val assembleAll = taskKey[Seq[File]]("Assemble all runnable fat jars into build/")
 assembleAll := Seq(
   (oracleLatticeGenerator / buildJar).value,
   (mlOracleFinder / buildJar).value,
-  (replayLatticeGenerator / buildJar).value
+  (replayLatticeGenerator / buildJar).value,
+  (randomTrajectoryGenerator / buildJar).value
 )
