@@ -4,7 +4,7 @@ The end-to-end workflow is controlled by `scripts/lattice_pipeline.py`. This scr
 
 **Usage:**
 ```bash
-python scripts/lattice_pipeline.py --action [all|generate|train|evaluate] [OPTIONS]
+python scripts/lattice_pipeline.py --action [all|generate|train|evaluate|generate-random] [OPTIONS]
 ```
 
 **Key Arguments:**
@@ -26,7 +26,7 @@ Note that when deviating from the default argument values, the argument non-defa
 
 *   **Process:** The Scala framework analyzes programs in the `--train-dir` using a Beam Search algorithm. Instead of exploring abstract states randomly, it looks `l` steps ahead to find paths that maximize "lattice progression" (moving towards the `Top` element).
 *   **Data Extraction:** At each step, `Strategies.scala` extracts features about the abstract state. 
-*   **Output:** Generates `TRAIN_DATA.csv` files inside `/data/experiments/lattice_lX_bY/program_name/`.
+*   **Output:** Generates `TRAIN_DATA.csv` files inside `data/lattice_lX_bY/program_name/`.
 
 ---
 
@@ -66,3 +66,18 @@ Note that when deviating from the default argument values, the argument non-defa
     *   **Win Rate:** How often the ML model completed the analysis in fewer iterations than FIFO.
     *   **Step Ratio:** The average reduction in analysis steps.
     *   **TPI Overhead:** The Time-Per-Iteration penalty incurred by evaluating the ML features.
+
+---
+
+## Generating Random Baselines & Plots
+
+**Trigger:** `python scripts/lattice_pipeline.py --action generate-random --num-runs 100`
+**Core Files:** `maf/code/jvm/src/main/scala/maf/cli/runnables/RandomTrajectoryGenerator.scala`, `scripts/plot.py`
+
+*   **Process:** Evaluates the benchmark programs using a `TrueRandomWorkList` for a specified number of iterations, alongside a standard `FIFOWorkList` baseline.
+*   **Output:** Generates `data/raw/random_trajectories.csv`.
+*   **Plotting:** You can visualize the distribution of these random runs compared to FIFO and ML using the plotting script:
+    ```bash
+    python scripts/plot.py --eval-csv data/experiments/lattice_l10_b3/models/all_features/evaluation_results.csv
+    ```
+    This will save density plots into `figures/distributions/`.
