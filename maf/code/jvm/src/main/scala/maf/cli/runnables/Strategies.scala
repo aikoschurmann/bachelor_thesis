@@ -154,55 +154,10 @@ trait WorklistStateMetrics:
 class LatticeFeatureBuilder extends FeatureBuilder 
     with ComponentSizeMetrics 
     with CallGraphMetrics
-    with WorklistStateMetrics:
+    with WorklistStateMetrics
+    with TranspiledFeatureExtractor:
 
     val inWorklist = mutable.Set[SchemeModFComponent]()
-
-    override def featureNames = Array("step", "wl_size", "name_hash", "pending_updates", "wait", "size", "out_degree", "in_degree", "was_selected", "arrival_index", "visits", "age", "delta_change", "avg_input_levelToTop", "is_main", "arity", "avg_neighbor_conv", "pending_producers_ratio", "pending_consumers_ratio", "is_frontier", "progress_ratio")
-
-    override def extractFeatures(comp: SchemeModFComponent, step: Int, wlSize: Int): Array[Float] =
-        val count = inputLevelCount(comp)
-        val avgLevelToTop = if count == 0 then 0.0f else inputLevelSum(comp) / count.toFloat
-
-        val (isMain, arity) = comp match
-            case SchemeModFComponent.Main => (1.0f, 0.0f)
-            case c: SchemeModFComponent.Call[_] => (0.0f, c.lambda.args.size.toFloat)
-            case _ => (0.0f, 0.0f)
-
-        val neighbors = inEdges.getOrElse(comp, Set.empty)
-        val avgNeighborConv = if neighbors.isEmpty then 0.0f
-            else neighbors.map(n => producerConvergence.getOrElse(n, 0.0f)).sum / neighbors.size.toFloat
-            
-        val outE = outEdges.getOrElse(comp, Set.empty)
-        val pendingProducersRatio = if outE.isEmpty then 0.0f else outE.count(inWorklist.contains).toFloat / outE.size.toFloat
-        
-        val inE = inEdges.getOrElse(comp, Set.empty)
-        val pendingConsumersRatio = if inE.isEmpty then 0.0f else inE.count(inWorklist.contains).toFloat / inE.size.toFloat
-
-        val isFrontier = if visitCounts(comp) == 0 then 1.0f else 0.0f
-        val progressRatio = if step + wlSize == 0 then 0.0f else step.toFloat / (step + wlSize).toFloat
-
-        Array(
-            step.toFloat, wlSize.toFloat, comp.toString.hashCode.toFloat,
-            triggeringProducers.get(comp).map(_.size).getOrElse(0).toFloat, // 3
-            (step - enqueuedStep.getOrElse(comp, step)).toFloat,            // 4
-            getComponentSize(comp).toFloat,                                // 5
-            outEdges(comp).size.toFloat,                                   // 6
-            inEdges(comp).size.toFloat,                                    // 7
-            if lastSelected.contains(comp) then 1.0f else 0.0f,            // 8
-            arrivalTime.getOrElse(comp, 0L).toFloat,                       // 9
-            visitCounts(comp).toFloat,                                     // 10
-            (step - discoveryStep.getOrElse(comp, step)).toFloat,          // 11
-            deltaChange.getOrElse(comp, 0.0).toFloat,                      // 12
-            avgLevelToTop,                                                 // 13
-            isMain,                                                        // 14
-            arity,                                                         // 15
-            avgNeighborConv,                                               // 16
-            pendingProducersRatio,                                         // 17
-            pendingConsumersRatio,                                         // 18
-            isFrontier,                                                    // 19
-            progressRatio                                                  // 20
-        )
 
     override def recordSelection(comp: SchemeModFComponent): Unit = 
         lastSelected = Some(comp)

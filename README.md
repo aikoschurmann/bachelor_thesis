@@ -34,13 +34,15 @@ Note that when deviating from the default argument values, the argument non-defa
 ## Phase 2: Model Training & Transpilation
 
 **Trigger:** `python scripts/lattice_pipeline.py --action train`
-**Core Files:** `scripts/train_lattice_rank_model.py`, `scripts/transpile_xgboost.py`
+**Core Files:** `scripts/train_lattice_rank_model.py`, `scripts/transpile_xgboost.py`, `scripts/transpile_features.py`
 
-*   **Process:** Python aggregates all `TRAIN_DATA.csv` files and trains an XGBoost Ranker model to predict lattice progression based on abstract state features.
-*   **Transpilation:** Querying a Python ML model over a socket/JNI during a Scala static analysis loop introduces unacceptable overhead. Therefore, `transpile_xgboost.py` converts the raw decision trees into native Scala code.
+*   **Process:** Python aggregates all `TRAIN_DATA.csv` files and trains an XGBoost Ranker model to predict lattice progression.
+*   **Transpilation:** Querying a Python ML model over a socket/JNI introduces unacceptable overhead. Therefore, `transpile_xgboost.py` converts the raw decision trees into native Scala code.
+*   **Dynamic Feature Extraction:** To minimize feature extraction overhead, `transpile_features.py` generates a custom `TranspiledFeatureExtractor.scala` that computes *only* the specific features used by the model in O(1) time.
+*   **Compilation:** The pipeline automatically runs `sbt buildJar` to package the newly generated `.scala` files.
 *   **Output:** 
-    *   Saves the model weights to `data/experiments/.../models/`.
-    *   Generates a (massive) `TranspiledOracle.scala` file directly into the Scala source code directory. *(Note: This file is ignored by Git).*
+    *   Saves the model weights to the model directory.
+    *   Generates `TranspiledOracle.scala` and `TranspiledFeatureExtractor.scala` in the Scala source directory.
 
 ---
 

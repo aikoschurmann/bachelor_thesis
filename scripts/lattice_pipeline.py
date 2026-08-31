@@ -64,6 +64,13 @@ def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, featu
     if not _run_command(transpile_cmd, cwd=PROJECT_ROOT):
         return False
 
+    json_features_path = os.path.join(actual_model_dir, "feature_names_lattice_rank.json")
+    feature_scala_output_path = os.path.join(MAF_DIR, "code", "jvm", "src", "main", "scala", "maf", "cli", "runnables", "TranspiledFeatureExtractor.scala")
+    
+    transpile_features_cmd = f'{PYTHON_CMD} scripts/transpile_features.py --json_features {json_features_path} --output {feature_scala_output_path}'
+    if not _run_command(transpile_features_cmd, cwd=PROJECT_ROOT):
+        return False
+
     # Phase 2c: the transpiled oracle is compiled into the evaluation jar, so it has to
     # be reassembled before it can be used by evaluate_model.
     return _run_command('sbt --warn mlOracleFinder/buildJar', cwd=MAF_DIR)
