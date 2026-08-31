@@ -21,21 +21,21 @@ MAX_CORES = os.cpu_count() or 1
 
 # Set configurations to exclude 
 EXCLUDE = set([
-        "lattice_l2_b5_k0_fast",
-        "lattice_l5_b5_k0_fast",
-        "lattice_l15_b5_k0_fast",
-        "lattice_l25_b5_k0_fast",
-        "lattice_l2_b5_k1_fast",
-        "lattice_l5_b5_k1_fast",
-        "lattice_l15_b5_k1_fast",
-        "lattice_l25_b5_k1_fast",
-        "lattice_l2_b25_k0_all",
-        "lattice_l5_b25_k0_all",
-        "lattice_l15_b25_k0_all",
-        "lattice_l25_b25_k0_all",
-        "lattice_l2_b25_k1_all",
-        "lattice_l5_b25_k1_all",
-        "lattice_l15_b25_k1_all"
+        "lattice_l2_b5_k0g",
+        "lattice_l5_b5_k0g",
+        "lattice_l15_b5_k0g",
+        "lattice_l25_b5_k0g",
+        "lattice_l2_b5_k1g",
+        "lattice_l5_b5_k1g",
+        "lattice_l15_b5_k1g",
+        "lattice_l25_b5_k1g",
+        "lattice_l2_b25_k0",
+        "lattice_l5_b25_k0",
+        "lattice_l15_b25_k0",
+        "lattice_l25_b25_k0",
+        "lattice_l2_b25_k1",
+        "lattice_l5_b25_k1",
+        "lattice_l15_b25_k1"
     ])
 
 ############################################################
@@ -149,32 +149,32 @@ FEATURE_SETS = {
         # The "all" feature set is explicitly set to "none"
         # so that no parameter is generated for the command
         "all": None, 
-        "fast": ",".join([
-            "was_selected",
-            "is_main",
-            "norm_pending_updates",
-            "log_pending_updates",
-            "norm_wait",
-            "log_wait",
-            "norm_size",
-            "log_size",
-            "norm_out_degree",
-            "log_out_degree",
-            "norm_in_degree",
-            "log_in_degree",
-            "norm_visits",
-            "log_visits",
-            "norm_age",
-            "log_age",
-            "norm_delta_change",
-            "log_delta_change",
-            "norm_avg_input_levelToTop",
-            "log_avg_input_levelToTop",
-            "norm_arity",
-            "log_arity",
-            "norm_avg_neighbor_conv",
-            "log_avg_neighbor_conv"
-            ])
+        # "fast": ",".join([
+        #     "was_selected",
+        #     "is_main",
+        #     "norm_pending_updates",
+        #     "log_pending_updates",
+        #     "norm_wait",
+        #     "log_wait",
+        #     "norm_size",
+        #     "log_size",
+        #     "norm_out_degree",
+        #     "log_out_degree",
+        #     "norm_in_degree",
+        #     "log_in_degree",
+        #     "norm_visits",
+        #     "log_visits",
+        #     "norm_age",
+        #     "log_age",
+        #     "norm_delta_change",
+        #     "log_delta_change",
+        #     "norm_avg_input_levelToTop",
+        #     "log_avg_input_levelToTop",
+        #     "norm_arity",
+        #     "log_arity",
+        #     "norm_avg_neighbor_conv",
+        #     "log_avg_neighbor_conv"
+        #     ])
         }
 
 
@@ -187,7 +187,7 @@ parameters = [
 
 def map_name(parameters):
     [l, b, k, features] = parameters 
-    return [ "lattice", l, b, k, features ]
+    return [ "lattice", l, b, k ]
 
 ############################################################
 # CPU isolation
