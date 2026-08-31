@@ -39,6 +39,19 @@ class Parameter(ABC):
         with the parameter
         """
         pass
+    
+    def construct_cli(self, name: str, value: Any) -> list[str]: 
+        """
+        Constructs the command line arguments for a value (produced from "values()")
+        for this parameter.
+
+        Corresponds to the `command_line_argument_name` combined with a string
+        representation of "values()" by default but can be overriden.
+        """
+        if value is None: 
+            return []
+        else:
+            return [ self.commandline_argument_name(), str(value) ]
 
 class ExtensionalParameter(Parameter): 
     """
@@ -62,17 +75,22 @@ class DictionaryParameter(Parameter):
     in the dictionary.
     """
 
-    def __init__(self, dict: Dict[str, Any], argname: str): 
+    def __init__(self, dict: Dict[str, Any], argname: str, keyargname: str | None = None): 
         self.__dict = dict
         self.argname = argname
+        self.keyargname = keyargname
 
     def values(self): 
         for (name, value) in self.__dict.items():
             yield (name, value)
 
-    def commandline_argument_name(self):
+    def commandline_argument_name(self) -> str:
         return self.argname
 
+    def construct_cli(self, name: str, value: Any) -> list[str]:
+        val_arg = [ self.argname, str(value) ] if value is not None else []
+        key_arg = [ self.keyargname , name ] if self.keyargname is not None else []
+        return val_arg + key_arg
 
 def cartesian(parameters: Sequence[Parameter]) -> Iterator[Tuple[str, Sequence[str]]]:
     """
@@ -86,10 +104,8 @@ def cartesian(parameters: Sequence[Parameter]) -> Iterator[Tuple[str, Sequence[s
             (_, (name, _)) = configuration_param
             return str(name)
         def get_cli_param(configuration_param):
-            (param, (_, value)) = configuration_param 
-            if value is None: 
-                return []
-            return [param.commandline_argument_name(), str(value) ]
+            (param, (name, value)) = configuration_param 
+            return param.construct_cli(name, value)
 
         name = "_".join(list(map(get_name, configuration)))
         cli_params = list(itertools.chain.from_iterable(list(map(get_cli_param, configuration))))
@@ -140,7 +156,7 @@ parameters = sorted([
     ExtensionalParameter([2, 5, 15, 25], "--lookahead"), 
     ExtensionalParameter([5, 25, 50], "--beam"), 
     ExtensionalParameter([0, 1], "--k"),
-    DictionaryParameter(FEATURE_SETS, "--features")
+    DictionaryParameter(FEATURE_SETS, "--features", "--data-suffix")
 ], key=lambda p: p.commandline_argument_name())
 
 ############################################################
