@@ -19,6 +19,25 @@ DEFAULT_MODELS_DIR = PROJECT_ROOT / "models"
 # Number of cores used by the phases that are allowed to use the whole machine.
 MAX_CORES = os.cpu_count() or 1
 
+# Set configurations to exclude 
+EXCLUDE = set([
+        "lattice_l2_b5_k0_fast",
+        "lattice_l5_b5_k0_fast",
+        "lattice_l15_b5_k0_fast",
+        "lattice_l25_b5_k0_fast",
+        "lattice_l2_b5_k1_fast",
+        "lattice_l5_b5_k1_fast",
+        "lattice_l15_b5_k1_fast",
+        "lattice_l25_b5_k1_fast",
+        "lattice_l2_b25_k0_all",
+        "lattice_l5_b25_k0_all",
+        "lattice_l15_b25_k0_all",
+        "lattice_l25_b25_k0_all",
+        "lattice_l2_b25_k1_all",
+        "lattice_l5_b25_k1_all",
+        "lattice_l15_b25_k1_all"
+    ])
+
 ############################################################
 # Infrastructure
 ############################################################
@@ -40,7 +59,7 @@ class Parameter(ABC):
         """
         pass
     
-    def construct_cli(self, name: str, value: Any) -> list[str]: 
+    def construct_cli(self, _name: str, value: Any) -> list[str]: 
         """
         Constructs the command line arguments for a value (produced from "values()")
         for this parameter.
@@ -59,12 +78,13 @@ class ExtensionalParameter(Parameter):
     of values.
     """
 
-    def __init__(self, values, argname): 
+    def __init__(self, values, argname, prefix: str | None = None): 
         self.__values = values
         self.argname = argname
+        self.__prefix = prefix if prefix is not None else ""
 
     def values(self):
-        return zip(self.__values, self.__values)
+        return zip(map(lambda name: self.__prefix+str(name), self.__values), self.__values)
 
     def commandline_argument_name(self):
         return self.argname
@@ -92,14 +112,23 @@ class DictionaryParameter(Parameter):
         key_arg = [ self.keyargname , name ] if self.keyargname is not None else []
         return val_arg + key_arg
 
-def cartesian(parameters: Sequence[Parameter]) -> Iterator[Tuple[str, Sequence[str]]]:
+def cartesian(parameters: Sequence[Parameter]):
+    """
+    A combinator for generating combinations of parameters out of a 
+    list of parameters.
+    """
+    parameter_values = map(lambda param: list(map(lambda tuple: (param, tuple), param.values())), parameters)
+    return list(itertools.product(*parameter_values))
+
+def id(x): 
+    return x
+
+def generate_cli(combinations: Sequence[Sequence[Tuple[Parameter, Tuple[str, Any]]]], map_name = id) -> Iterator[Tuple[str, Sequence[str]]]:
     """
     A generator for generating the command-line arguments for 
     each combination of the given parameters.
     """
-    parameter_values = map(lambda param: list(map(lambda tuple: (param, tuple), param.values())), parameters)
-    product = itertools.product(*parameter_values)
-    for configuration in product: 
+    for configuration in combinations: 
         def get_name(configuration_param):
             (_, (name, _)) = configuration_param
             return str(name)
@@ -107,12 +136,11 @@ def cartesian(parameters: Sequence[Parameter]) -> Iterator[Tuple[str, Sequence[s
             (param, (name, value)) = configuration_param 
             return param.construct_cli(name, value)
 
-        name = "_".join(list(map(get_name, configuration)))
+        name = "_".join(list(map_name(map(get_name, configuration))))
         cli_params = list(itertools.chain.from_iterable(list(map(get_cli_param, configuration))))
 
         yield (name, cli_params)
     
-
 ############################################################
 # Parameters
 ############################################################
@@ -150,14 +178,16 @@ FEATURE_SETS = {
         }
 
 
-# Sorted list of parameters to enable stable naming of the 
-# generated output.
-parameters = sorted([
-    ExtensionalParameter([2, 5, 15, 25], "--lookahead"), 
-    ExtensionalParameter([5, 25, 50], "--beam"), 
-    ExtensionalParameter([0, 1], "--k"),
+parameters = [
+    ExtensionalParameter([2, 5, 15, 25], "--lookahead", "l"), 
+    ExtensionalParameter([5, 25, 50], "--beam", "b"), 
+    ExtensionalParameter([0, 1], "--k", "k"),
     DictionaryParameter(FEATURE_SETS, "--features", "--data-suffix")
-], key=lambda p: p.commandline_argument_name())
+    ]
+
+def map_name(parameters):
+    [l, b, k, features] = parameters 
+    return [ "lattice", l, b, k, features ]
 
 ############################################################
 # CPU isolation
@@ -363,11 +393,14 @@ def main():
                         help="Only print the configurations that would be run")
     args = parser.parse_args()
 
-    configurations = list(cartesian(parameters))
+    combinations = cartesian(parameters)
+    configurations = list(generate_cli(combinations, map_name))
     core = args.core if args.core is not None else physical_cores()[-1]
 
     if args.dry_run:
         for (name, cli_params) in configurations:
+            if name in EXCLUDE:
+                continue
             print(f"{name}: {' '.join(cli_params)}")
         return 0
 
@@ -379,6 +412,10 @@ def main():
     with hyperthreading_disabled(disable_smt):
         for (i, (name, cli_params)) in enumerate(configurations, start=1):
             print(f"\n{'='*60}\n [{i}/{len(configurations)}] {name}\n{'='*60}")
+            if name in EXCLUDE:
+                print("SKIPPING")
+                continue
+
             model_dir = args.models_dir / name
             if not run_phase(name, cli_params, model_dir, args.log_dir, core):
                 failed.append(name)
