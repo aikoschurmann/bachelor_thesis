@@ -83,15 +83,15 @@ def evaluate_model(lookahead: int, beam: int, test_dir: str, num_cores: int, mod
     cmd = f'java -jar {jar} {actual_model_dir} {test_dir} {results_csv} {lookahead} {beam} {num_runs} {k_cfa}'
     return _run_command(cmd, cwd=MAF_DIR)
 
-def generate_random(test_dir: str, num_runs: int = 100, k_cfa: int = 0) -> bool:
+def generate_random(test_dir: str, num_runs: int = 100, k_cfa: int = 0, num_cores: int = 10) -> bool:
     """Runs Random Trajectory Generation."""
     print(f"\n{'='*60}\n Generating Random Trajectories \n{'='*60}")
     
     jar = utils.path_to_jar("random-trajectory-generator.jar")
     result_file = os.path.join(DATA_BASE_DIR, "raw", "random_trajectories.csv")
     
-    # jar args: testDir resultFile numRuns k_cfa
-    cmd = f'java -jar {jar} {test_dir} {result_file} {num_runs} {k_cfa}'
+    # jar args: testDir resultFile numRuns k_cfa numCores
+    cmd = f'java -jar {jar} {test_dir} {result_file} {num_runs} {k_cfa} {num_cores}'
     return _run_command(cmd, cwd=MAF_DIR)
 
 def run_all(lookahead: int, beam: int, train_dir: str, test_dir: str, num_cores: int, features: list = None, model_dir: str = None, data_suffix: str = "", k_cfa: int = 0) -> bool:
@@ -130,4 +130,4 @@ if __name__ == "__main__":
     elif args.action == "evaluate":
         evaluate_model(args.lookahead, args.beam, args.test_dir, args.cores, args.model_dir, num_runs=3, data_suffix=args.data_suffix, k_cfa=args.k)
     elif args.action == "generate-random":
-        generate_random(args.test_dir, args.num_runs, args.k)
+            generate_random(args.test_dir, args.num_runs, args.k, args.cores)
