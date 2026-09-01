@@ -91,6 +91,11 @@ def main():
         else:
             base_features.add(f)
 
+    # Always ensure mandatory metadata features are included for the data generation pipeline
+    required_aux = {"step", "wl_size", "name_hash", "arrival_index"}
+    for f in required_aux:
+        base_features.add(f)
+
     # Sort base features to ensure deterministic code generation
     sorted_base = sorted([f for f in base_features if f in FEATURE_SNIPPETS])
     
