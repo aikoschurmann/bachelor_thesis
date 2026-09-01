@@ -24,14 +24,24 @@ class Pool[T]:
   protected val elements: mutable.Set[T] = mutable.Set()
 
   def contains(x: T): Boolean = elements.contains(x)
-  def add(x: T): Unit =
-    contents += x 
-    elements += x
+  def filterInPlace(f: T => Boolean): Unit = {
+    contents.filterInPlace { x =>
+      val keep = f(x)
+      if !keep then elements -= x
+      keep
+    }
+  }
+
+  def add(x: T): Boolean =
+    if elements.add(x) then {
+      contents += x 
+      true
+    } else false
   def remove(x: T): Unit =
     contents -= x
     elements -= x
   def -=(x: T): Unit = remove(x)
-  def +=(x: T): Unit = add(x)
+  def +=(x: T): Unit = { add(x); () }
   def isEmpty: Boolean = contents.isEmpty
   def nonEmpty: Boolean = contents.nonEmpty
   def apply(i: Int): T = contents(i)
@@ -47,51 +57,51 @@ class Pool[T]:
     newPool
 
 class XGBoostScorer(modelDir: String, extractor: FeatureBuilder):
-    private val jsonStr = scala.io.Source.fromFile(s"$modelDir/feature_names_lattice_rank.json").mkString
+    private val jsonStr = scala.util.Using(scala.io.Source.fromFile(s"$modelDir/feature_names_lattice_rank.json"))(_.mkString).get
     private val jsonFeatureList = jsonStr.replace("[", "").replace("]", "").split(",").map(_.trim.replace("\"", "")).filter(_.nonEmpty)
     
     private val rawFeatureNames = extractor.featureNames
     private case class FeatureExtractor(rawIndex: Int, op: (Float, Float) => Float)
     
+    private val processedBuf = new Array[Float](jsonFeatureList.length)
     private val extractors = jsonFeatureList.map { f =>
         if f.startsWith("norm_") then
             val rawName = f.substring(5)
             val idx = rawFeatureNames.indexOf(rawName)
-            if idx < 0 then throw new Exception(s"Unknown raw feature: $rawName")
+            if idx < 0 then FeatureExtractor(-1, (r, m) => 0.0f) else
             FeatureExtractor(idx, (r, m) => if m > 0.0f then r / m else 0.0f)
         else if f.startsWith("log_") then
             val rawName = f.substring(4)
             val idx = rawFeatureNames.indexOf(rawName)
-            if idx < 0 then throw new Exception(s"Unknown raw feature: $rawName")
+            if idx < 0 then FeatureExtractor(-1, (r, m) => 0.0f) else
             FeatureExtractor(idx, (r, _) => math.log1p(r.toDouble).toFloat)
         else
             val idx = rawFeatureNames.indexOf(f)
-            if idx < 0 then throw new Exception(s"Unknown raw feature: $f")
+            if idx < 0 then FeatureExtractor(-1, (r, m) => 0.0f) else
             FeatureExtractor(idx, (r, _) => r)
     }
 
-    def score(poolSize: Int, raw: Array[Array[Float]]): Array[Float] =
-        if raw.isEmpty then Array.emptyFloatArray
-        else
-            val numRawFeats = rawFeatureNames.length
-            val maxMap = new Array[Float](numRawFeats)
-            for j <- 0 until numRawFeats do maxMap(j) = Float.MinValue
-            for r <- raw do
-                for j <- 0 until numRawFeats do
-                    if r(j) > maxMap(j) then maxMap(j) = r(j)
-            
+    def score(poolSize: Int, raw: Array[Array[Float]], outScores: Array[Float]): Unit =
+        if poolSize == 0 then return
+        val numRawFeats = rawFeatureNames.length
+        val maxMap = Array.fill(numRawFeats)(Float.MinValue)
+        for i <- 0 until poolSize do
+            val r = raw(i)
             for j <- 0 until numRawFeats do
-                if maxMap(j) <= 0.0f then maxMap(j) = 1.0f
+                if r(j) > maxMap(j) then maxMap(j) = r(j)
+        
+        for j <- 0 until numRawFeats do
+            if maxMap(j) <= 0.0f then maxMap(j) = 1.0f
 
-            val scores = new Array[Float](poolSize)
-            val processed = new Array[Float](extractors.length)
-            for i <- 0 until poolSize do
-                val r = raw(i)
-                for j <- 0 until extractors.length do
-                    val ex = extractors(j)
-                    processed(j) = ex.op(r(ex.rawIndex), maxMap(ex.rawIndex))
-                scores(i) = TranspiledOracle.score(processed)
-            scores
+        for i <- 0 until poolSize do
+            val r = raw(i)
+            for j <- 0 until extractors.length do
+                val ex = extractors(j)
+                if ex.rawIndex >= 0 then
+                    processedBuf(j) = ex.op(r(ex.rawIndex), maxMap(ex.rawIndex))
+                else
+                    processedBuf(j) = 0.0f
+            outScores(i) = TranspiledOracle.score(processedBuf)
 
 class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoostScorer, val config: MLConfig) extends WorkList[SchemeModFComponent]:
     protected val pool = Pool[SchemeModFComponent]()
@@ -100,11 +110,17 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
     private var lastHeadStep: Int = -1
 
     private val scoreCache = mutable.Map[SchemeModFComponent, Float]()
-    private val lastScoredStep = mutable.Map[SchemeModFComponent, Int]()
-    private val lastScoredDelta = mutable.Map[SchemeModFComponent, Double]()
+    private val lastScoredStep = mutable.Map[SchemeModFComponent, Int]().withDefaultValue(0)
+    private val lastScoredDelta = mutable.Map[SchemeModFComponent, Double]().withDefaultValue(-1.0)
     private val batchQueue = mutable.Queue[SchemeModFComponent]()
     private val BATCH_SIZE = 20
     private val STALE_THRESHOLD = 20
+
+    private var toScoreBuf = new Array[SchemeModFComponent](256)
+    private var rawBuf = new Array[Array[Float]](256)
+    private var outScoresBuf = new Array[Float](256)
+    private val bestK = new Array[SchemeModFComponent](BATCH_SIZE)
+    private val bestScores = new Array[Float](BATCH_SIZE)
 
     def add(x: SchemeModFComponent) = {
       if !pool.contains(x)
@@ -155,42 +171,45 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
             val next = batchQueue.dequeue()
             if pool.contains(next) then return next
 
-        // 3. Caching & Scoring (Zero GC allocations via while loops)
-        val toScore = new Array[SchemeModFComponent](pool.length)
+                // 3. Caching & Scoring (Zero GC allocations via while loops)
+        if pool.length > toScoreBuf.length then
+            val newSize = math.max(pool.length, toScoreBuf.length * 2)
+            toScoreBuf = new Array[SchemeModFComponent](newSize)
+            rawBuf = new Array[Array[Float]](newSize)
+            outScoresBuf = new Array[Float](newSize)
+
         var toScoreCount = 0
         i = 0
         while i < pool.length do
             val c = pool(i)
             val isStale = !scoreCache.contains(c) ||
-                          extractor.deltaChange(c) > lastScoredDelta.getOrElse(c, -1.0) ||
-                          (currentStep - lastScoredStep.getOrElse(c, 0)) > STALE_THRESHOLD
+                          extractor.deltaChange(c) > lastScoredDelta(c) ||
+                          (currentStep - lastScoredStep(c)) > STALE_THRESHOLD
             if isStale then
-                toScore(toScoreCount) = c
+                toScoreBuf(toScoreCount) = c
                 toScoreCount += 1
             i += 1
 
         if toScoreCount > 0 then
-            val raw = new Array[Array[Float]](toScoreCount)
             var j = 0
             while j < toScoreCount do
-                raw(j) = extractor.extractFeatures(toScore(j), currentStep, pool.size)
+                rawBuf(j) = extractor.extractFeatures(toScoreBuf(j), currentStep, pool.size)
                 j += 1
             
-            val newScores = scorer.score(toScoreCount, raw)
+            scorer.score(toScoreCount, rawBuf, outScoresBuf)
             j = 0
             while j < toScoreCount do
-                val c = toScore(j)
-                scoreCache(c) = newScores(j)
+                val c = toScoreBuf(j)
+                scoreCache(c) = outScoresBuf(j)
                 lastScoredStep(c) = currentStep
                 lastScoredDelta(c) = extractor.deltaChange(c)
                 j += 1
 
         // 4. Batch Selection (O(N) Top-K scan instead of O(N log N) sorting)
-        val bestK = new Array[SchemeModFComponent](BATCH_SIZE)
-        val bestScores = new Array[Float](BATCH_SIZE)
         var b = 0
         while b < BATCH_SIZE do
             bestScores(b) = Float.MinValue
+            bestK(b) = null
             b += 1
             
         i = 0
@@ -218,13 +237,22 @@ class MLGuidedWorkList(val extractor: LatticeFeatureBuilder, val scorer: XGBoost
     override def toList = pool.toList
     override def toSet = pool.toSet
     override def filter(f: SchemeModFComponent => Boolean) = { 
-      val toRem = pool.filterNot(f); 
-      toRem.foreach(x => { pool -= x; scoreCache -= x }); 
+      pool.filterInPlace { x =>
+        val keep = f(x)
+        if !keep then scoreCache -= x
+        keep
+      }
+      if cachedHead.exists(x => !f(x)) then cachedHead = None
       this 
     }
     override def filterNot(f: SchemeModFComponent => Boolean) = filter(x => !f(x))
     override def map[Y](f: SchemeModFComponent => Y) = throw new UnsupportedOperationException()
-    override def -(x: SchemeModFComponent) = { pool -= x; scoreCache -= x;this }
+    override def -(x: SchemeModFComponent) = { 
+        pool -= x; 
+        scoreCache -= x;
+        if cachedHead.contains(x) then cachedHead = None
+        this 
+    }
 
 object MLOracleFinder:
     def main(args: Array[String]): Unit =
