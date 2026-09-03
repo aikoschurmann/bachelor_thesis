@@ -84,9 +84,9 @@ class XGBoostScorer(modelDir: String, extractor: FeatureBuilder):
                 if maxMap(j) <= 0.0f then maxMap(j) = 1.0f
 
             val scores = new Array[Float](poolSize)
+            val processed = new Array[Float](extractors.length)
             for i <- 0 until poolSize do
                 val r = raw(i)
-                val processed = new Array[Float](extractors.length)
                 for j <- 0 until extractors.length do
                     val ex = extractors(j)
                     processed(j) = ex.op(r(ex.rawIndex), maxMap(ex.rawIndex))
