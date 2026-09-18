@@ -44,6 +44,7 @@ Note that when deviating from the default argument values, the argument non-defa
 *   **Output:** 
     *   Saves the model weights to the model directory.
     *   Generates `TranspiledOracle.scala` and `TranspiledFeatureExtractor.scala` in the Scala source directory.
+    *   Generates SHAP explanation plots inside the model's `figures/` directory.
 
 ---
 
@@ -57,6 +58,17 @@ Note that when deviating from the default argument values, the argument non-defa
     1.  Using a standard `FIFOWorkList`.
     2.  Using the `MLGuidedWorkList`, which uses the `TranspiledOracle.scala` to score and sort the worklist components in O(N) time.
 *   **Output:** Writes steps taken, wall-clock time, and overhead comparisons to `evaluation_results.csv` next to the trained model.
+
+---
+
+## SHAP Feature Analysis
+
+**Trigger:** Automatically runs during `Phase 2` (Model Training), or manually via `python scripts/run_shap.py`
+**Core File:** `scripts/run_shap.py`
+
+*   **Process:** Loads a trained XGBoost model and its training data to compute SHAP (SHapley Additive exPlanations) values. Subsamples data for performance.
+*   **Output:** Generates a SHAP summary (beeswarm) plot and a feature importance (bar) plot to explain model predictions.
+*   **Location:** Plots are saved inside the respective model's directory as `figures/shap_summary.png` and `figures/shap_importance_bar.png`.
 
 ---
 

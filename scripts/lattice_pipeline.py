@@ -71,7 +71,13 @@ def train_model(lookahead: int, beam: int, train_dir: str, num_cores: int, featu
     if not _run_command(transpile_features_cmd, cwd=PROJECT_ROOT):
         return False
 
-    # Phase 2c: the transpiled oracle is compiled into the evaluation jar, so it has to
+    # Phase 2c: Generate SHAP explanation plots
+    figures_dir = os.path.join(actual_model_dir, "figures")
+    shap_cmd = f'{PYTHON_CMD} scripts/run_shap.py --data_root {data_path} --model_path {json_model_path} --feature_list {json_features_path} --out_dir {figures_dir}'
+    if not _run_command(shap_cmd, cwd=PROJECT_ROOT):
+        print("Warning: SHAP generation failed, but continuing.")
+
+    # Phase 2d: the transpiled oracle is compiled into the evaluation jar, so it has to
     # be reassembled before it can be used by evaluate_model.
     return _run_command('sbt --warn mlOracleFinder/buildJar', cwd=MAF_DIR)
 
